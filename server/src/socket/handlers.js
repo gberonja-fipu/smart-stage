@@ -1,6 +1,6 @@
 const { getInitialState } = require('../data/stageElements');
 
-function registerHandlers(io, socket, state) {
+function registerHandlers(io, socket, state, deviceManager) {
   socket.on('stage:getState', () => {
     console.log(`[${socket.id}] stage:getState`);
     socket.emit('stage:stateReset', state);
@@ -16,8 +16,9 @@ function registerHandlers(io, socket, state) {
     if (index === -1) return;
 
     elements[index] = { ...elements[index], ...changes };
-
     io.emit('stage:elementUpdated', { category, element: elements[index] });
+
+    deviceManager.sendCommand(id, changes);
   });
 
   socket.on('stage:toggleElement', ({ category, id }) => {
@@ -30,8 +31,9 @@ function registerHandlers(io, socket, state) {
     if (index === -1) return;
 
     elements[index] = { ...elements[index], on: !elements[index].on };
-
     io.emit('stage:elementUpdated', { category, element: elements[index] });
+
+    deviceManager.sendCommand(id, { on: elements[index].on });
   });
 
   socket.on('stage:resetAll', () => {
@@ -42,6 +44,8 @@ function registerHandlers(io, socket, state) {
     Object.assign(state, fresh);
 
     io.emit('stage:stateReset', state);
+
+    deviceManager.resetAll();
   });
 }
 

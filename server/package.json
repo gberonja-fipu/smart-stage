@@ -13,7 +13,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "aedes": "^1.0.2",
+    "aedes-server-factory": "^0.2.1",
     "express": "^5.2.1",
+    "mqtt": "^5.15.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

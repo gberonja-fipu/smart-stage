@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from './useSocket';
 
 export function useStage() {
   const { socket, isConnected } = useSocket();
   const [stageState, setStageState] = useState(null);
+  const [mqttHeartbeats, setMqttHeartbeats] = useState({});
+  const heartbeatTimers = useRef({});
 
   useEffect(() => {
     function onStateReset(state) {
@@ -22,14 +24,28 @@ export function useStage() {
       });
     }
 
+    function onHeartbeat({ deviceId }) {
+      setMqttHeartbeats(prev => ({ ...prev, [deviceId]: true }));
+
+      if (heartbeatTimers.current[deviceId]) {
+        clearTimeout(heartbeatTimers.current[deviceId]);
+      }
+      heartbeatTimers.current[deviceId] = setTimeout(() => {
+        setMqttHeartbeats(prev => ({ ...prev, [deviceId]: false }));
+      }, 12000);
+    }
+
     socket.on('stage:stateReset', onStateReset);
     socket.on('stage:elementUpdated', onElementUpdated);
+    socket.on('mqtt:heartbeat', onHeartbeat);
 
     socket.emit('stage:getState');
 
     return () => {
       socket.off('stage:stateReset', onStateReset);
       socket.off('stage:elementUpdated', onElementUpdated);
+      socket.off('mqtt:heartbeat', onHeartbeat);
+      Object.values(heartbeatTimers.current).forEach(clearTimeout);
     };
   }, [socket]);
 
@@ -45,5 +61,5 @@ export function useStage() {
     socket.emit('stage:resetAll');
   }, [socket]);
 
-  return { stageState, isConnected, updateElement, toggleElement, resetAll };
+  return { stageState, isConnected, mqttHeartbeats, updateElement, toggleElement, resetAll };
 }
