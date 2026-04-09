@@ -1,4 +1,5 @@
 import StageElement from './StageElement';
+import StagePlot from './StagePlot';
 
 // SVG stage area bounds
 const STAGE = { x: 40, y: 30, w: 720, h: 390 };
@@ -24,7 +25,7 @@ function toSVG({ x, y }) {
   };
 }
 
-export default function Stage({ stageState, selectedId, onSelectElement }) {
+export default function Stage({ stageState, selectedId, onSelectElement, performers, onMovePerformer, showPlot }) {
   if (!stageState) return null;
 
   const allElements = Object.values(stageState).flat();
@@ -81,8 +82,8 @@ export default function Stage({ stageState, selectedId, onSelectElement }) {
           P U B L I K A
         </text>
 
-        {/* Stage elements */}
-        {allElements.map(element => {
+        {/* Stage elements (elementi mode) */}
+        {!showPlot && allElements.map(element => {
           const rawPos = element.position || FALLBACK_POSITIONS[element.id];
           if (!rawPos) return null;
           const svgPos = toSVG(rawPos);
@@ -97,6 +98,14 @@ export default function Stage({ stageState, selectedId, onSelectElement }) {
             />
           );
         })}
+
+        {/* Stage plot (izvođači mode) */}
+        {showPlot && performers && (
+          <StagePlot
+            performers={performers}
+            onMovePerformer={onMovePerformer}
+          />
+        )}
       </svg>
     </div>
   );

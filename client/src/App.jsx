@@ -2,6 +2,13 @@ import { useState } from 'react';
 import './App.css';
 import { useStage } from './hooks/useStage';
 import Stage from './components/Stage';
+import ControlPanel from './components/ControlPanel';
+import PresetSelector from './components/PresetSelector';
+import CueList from './components/CueList';
+import CueEditor from './components/CueEditor';
+import TransportControls from './components/TransportControls';
+import Setlist from './components/Setlist';
+import SetlistEditor from './components/SetlistEditor';
 
 const CATEGORY_LABELS = {
   lights: 'Rasvjeta',
@@ -18,8 +25,24 @@ function findCategory(stageState, elementId) {
 }
 
 function App() {
-  const { stageState, isConnected, mqttHeartbeats, toggleElement, resetAll } = useStage();
+  const {
+    stageState, isConnected, mqttHeartbeats,
+    updateElement, toggleElement, resetAll,
+    performers, updatePerformerPosition,
+    presets, activePresetId, loadPreset, savePreset,
+    cueList, isPlaying, currentTime, activeCueId,
+    addCue, removeCue, updateCue,
+    playCues, pauseCues, stopCues, seekCues,
+    setlist, activeSetlistItemId,
+    loadSetlistItem, nextItem, prevItem,
+    addSetlistItem, removeSetlistItem, reorderSetlist,
+  } = useStage();
+
   const [selectedId, setSelectedId] = useState(null);
+  const [activeTab, setActiveTab] = useState('elementi'); // 'elementi' | 'plot'
+  const [editingCue, setEditingCue] = useState(null); // null | cue object | 'new'
+  const [bottomTab, setBottomTab] = useState('setlista'); // 'setlista' | 'cues'
+  const [addingSetlistItem, setAddingSetlistItem] = useState(false);
 
   const activeCount = stageState
     ? Object.values(stageState).flat().filter(el => el.on).length
@@ -32,6 +55,23 @@ function App() {
   const selectedCategory = stageState && selectedId
     ? findCategory(stageState, selectedId)
     : null;
+
+  const totalDuration = cueList.length > 0 ? cueList[cueList.length - 1].timestamp : 0;
+
+  function handleTabChange(tab) {
+    setActiveTab(tab);
+    if (tab === 'plot') setSelectedId(null);
+  }
+
+  function handleSaveCue(cueData) {
+    if (cueData.id) {
+      const { id, ...changes } = cueData;
+      updateCue(id, changes);
+    } else {
+      addCue(cueData);
+    }
+    setEditingCue(null);
+  }
 
   return (
     <div className="app">
@@ -49,72 +89,52 @@ function App() {
       </header>
 
       <div className="workspace">
-        {/* 2D Stage visualization */}
+        {/* Lijevi panel — pozornica */}
         <div className="stage-panel">
-          <h2 className="panel-title">Pozornica</h2>
+          <div className="stage-tabs">
+            <button className={`stage-tab ${activeTab === 'elementi' ? 'active' : ''}`} onClick={() => handleTabChange('elementi')}>
+              Elementi
+            </button>
+            <button className={`stage-tab ${activeTab === 'plot' ? 'active' : ''}`} onClick={() => handleTabChange('plot')}>
+              Stage plot
+            </button>
+          </div>
+
+          {activeTab === 'plot' && (
+            <PresetSelector
+              presets={presets}
+              activePresetId={activePresetId}
+              onLoadPreset={loadPreset}
+              onSavePreset={savePreset}
+              disabled={!isConnected}
+            />
+          )}
+
           {stageState
-            ? <Stage stageState={stageState} selectedId={selectedId} onSelectElement={setSelectedId} />
+            ? (
+              <Stage
+                stageState={stageState}
+                selectedId={selectedId}
+                onSelectElement={activeTab === 'elementi' ? setSelectedId : () => {}}
+                performers={performers}
+                onMovePerformer={updatePerformerPosition}
+                showPlot={activeTab === 'plot'}
+              />
+            )
             : <p className="loading">Učitavanje...</p>
           }
         </div>
 
-        {/* Control panel */}
+        {/* Desni panel — kontrole */}
         <aside className="control-panel">
-          {/* Selected element detail */}
-          {selectedElement && selectedCategory ? (
-            <div className="element-detail">
-              <div className="element-detail-header">
-                <span className="type-badge">{selectedElement.type}</span>
-                <button className="deselect-btn" onClick={() => setSelectedId(null)}>×</button>
-              </div>
-              <h3 className="detail-name">{selectedElement.name}</h3>
-              <div className="detail-props">
-                {selectedElement.color !== undefined && (
-                  <div className="prop-row">
-                    <span>Boja</span>
-                    <span className="prop-value">
-                      <span className="color-swatch" style={{ background: selectedElement.color }} />
-                      {selectedElement.color}
-                    </span>
-                  </div>
-                )}
-                {selectedElement.intensity !== undefined && (
-                  <div className="prop-row">
-                    <span>Intenzitet</span>
-                    <span className="prop-value">{selectedElement.intensity}%</span>
-                  </div>
-                )}
-                {selectedElement.volume !== undefined && (
-                  <div className="prop-row">
-                    <span>Glasnoća</span>
-                    <span className="prop-value">{selectedElement.volume}%</span>
-                  </div>
-                )}
-                {selectedElement.zone && (
-                  <div className="prop-row">
-                    <span>Zona</span>
-                    <span className="prop-value">{selectedElement.zone}</span>
-                  </div>
-                )}
-                {selectedElement.mode && (
-                  <div className="prop-row">
-                    <span>Mod</span>
-                    <span className="prop-value">{selectedElement.mode}</span>
-                  </div>
-                )}
-              </div>
-              <button
-                className={`toggle-btn ${selectedElement.on ? 'active' : ''}`}
-                onClick={() => toggleElement(selectedCategory, selectedElement.id)}
-              >
-                {selectedElement.on ? 'Isključi' : 'Uključi'}
-              </button>
-            </div>
-          ) : (
-            <p className="no-selection">Klikni element na pozornici</p>
-          )}
+          <ControlPanel
+            selectedElement={selectedElement}
+            selectedCategory={selectedCategory}
+            updateElement={updateElement}
+            toggleElement={toggleElement}
+            onDeselect={() => setSelectedId(null)}
+          />
 
-          {/* Category lists */}
           <div className="element-lists">
             {stageState && Object.entries(CATEGORY_LABELS).map(([category, label]) => (
               <section key={category} className="category-section">
@@ -126,7 +146,7 @@ function App() {
                       className={`element-item ${element.on ? 'on' : 'off'} ${selectedId === element.id ? 'selected' : ''}`}
                       onClick={() => {
                         setSelectedId(element.id);
-                        toggleElement(category, element.id);
+                        if (activeTab === 'elementi') toggleElement(category, element.id);
                       }}
                     >
                       <span className={`status-dot ${element.on ? 'on' : 'off'}`} />
@@ -143,6 +163,83 @@ function App() {
           </div>
         </aside>
       </div>
+
+      {/* Donja sekcija — Setlista i Cue lista kao tabovi */}
+      <section className="bottom-section">
+        <div className="bottom-tabs">
+          <button
+            className={`bottom-tab ${bottomTab === 'setlista' ? 'active' : ''}`}
+            onClick={() => setBottomTab('setlista')}
+          >
+            Setlista
+          </button>
+          <button
+            className={`bottom-tab ${bottomTab === 'cues' ? 'active' : ''}`}
+            onClick={() => setBottomTab('cues')}
+          >
+            Cue lista
+          </button>
+        </div>
+
+        {bottomTab === 'setlista' && (
+          addingSetlistItem ? (
+            <SetlistEditor
+              presets={presets}
+              onSave={(itemData) => {
+                addSetlistItem(itemData);
+                setAddingSetlistItem(false);
+              }}
+              onCancel={() => setAddingSetlistItem(false)}
+            />
+          ) : (
+            <Setlist
+              items={setlist}
+              activeItemId={activeSetlistItemId}
+              presets={presets}
+              onLoad={loadSetlistItem}
+              onRemove={removeSetlistItem}
+              onReorder={reorderSetlist}
+              onAdd={() => setAddingSetlistItem(true)}
+              onNext={nextItem}
+              onPrev={prevItem}
+              disabled={!isConnected}
+            />
+          )
+        )}
+
+        {bottomTab === 'cues' && (
+          <>
+            <TransportControls
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              totalDuration={totalDuration}
+              onPlay={playCues}
+              onPause={pauseCues}
+              onStop={stopCues}
+              onSeek={seekCues}
+              disabled={!isConnected || cueList.length === 0}
+            />
+
+            {editingCue ? (
+              <CueEditor
+                cue={editingCue === 'new' ? null : editingCue}
+                stageState={stageState}
+                onSave={handleSaveCue}
+                onCancel={() => setEditingCue(null)}
+              />
+            ) : (
+              <CueList
+                cues={cueList}
+                activeCueId={activeCueId}
+                currentTime={currentTime}
+                onRemove={removeCue}
+                onEdit={cue => setEditingCue(cue)}
+                onAdd={() => setEditingCue('new')}
+              />
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }
