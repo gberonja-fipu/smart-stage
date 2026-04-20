@@ -24,6 +24,20 @@ export function useStage() {
   const [setlist, setSetlist] = useState([]);
   const [activeSetlistItemId, setActiveSetlistItemId] = useState(null);
 
+  // Tranzicije
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionProgress, setTransitionProgress] = useState(0);
+
+  // Auto-play flag (samo klijent)
+  const [autoPlay, setAutoPlay] = useState(false);
+
+  // Timestamp kad je cue lista završila — za auto-play detekciju
+  const [lastCueFinishedAt, setLastCueFinishedAt] = useState(null);
+
+  // Stage Manager
+  const [smStandbyId, setSmStandbyId]     = useState(null);
+  const [smLastFiredId, setSmLastFiredId] = useState(null);
+
   useEffect(() => {
     // ── Stage state ──────────────────────────────────────────────────────────
     function onStateReset(state) { setStageState(state); }
@@ -54,11 +68,23 @@ export function useStage() {
     function onCueFinished() {
       setIsPlaying(false);
       setActiveCueId(null);
+      setLastCueFinishedAt(Date.now());
     }
 
     // ── Setlista ─────────────────────────────────────────────────────────────
     function onSetlistUpdated(items) { setSetlist(items); }
     function onSetlistActiveItem(id) { setActiveSetlistItemId(id); }
+
+    // ── Stage Manager ─────────────────────────────────────────────────────────
+    function onSmState({ standbyId, lastFiredId }) {
+      setSmStandbyId(standbyId);
+      setSmLastFiredId(lastFiredId);
+    }
+
+    // ── Tranzicije ────────────────────────────────────────────────────────────
+    function onTransitionStart()  { setIsTransitioning(true);  setTransitionProgress(0); }
+    function onTransitionProgress({ progress }) { setTransitionProgress(progress); }
+    function onTransitionComplete() { setIsTransitioning(false); setTransitionProgress(1); }
 
     // ── MQTT heartbeat ───────────────────────────────────────────────────────
     function onHeartbeat({ deviceId }) {
@@ -83,12 +109,17 @@ export function useStage() {
     socket.on('mqtt:heartbeat', onHeartbeat);
     socket.on('setlist:updated', onSetlistUpdated);
     socket.on('setlist:activeItem', onSetlistActiveItem);
+    socket.on('stageManager:state', onSmState);
+    socket.on('transition:start',    onTransitionStart);
+    socket.on('transition:progress', onTransitionProgress);
+    socket.on('transition:complete', onTransitionComplete);
 
     socket.emit('stage:getState');
     socket.emit('stage:getPerformers');
     socket.emit('stage:getPresets');
     socket.emit('cue:getList');
     socket.emit('setlist:get');
+    socket.emit('stageManager:getState');
 
     return () => {
       socket.off('stage:stateReset', onStateReset);
@@ -105,6 +136,10 @@ export function useStage() {
       socket.off('mqtt:heartbeat', onHeartbeat);
       socket.off('setlist:updated', onSetlistUpdated);
       socket.off('setlist:activeItem', onSetlistActiveItem);
+      socket.off('stageManager:state', onSmState);
+      socket.off('transition:start',    onTransitionStart);
+      socket.off('transition:progress', onTransitionProgress);
+      socket.off('transition:complete', onTransitionComplete);
       Object.values(heartbeatTimers.current).forEach(clearTimeout);
     };
   }, [socket]);
@@ -156,17 +191,21 @@ export function useStage() {
   const seekCues = useCallback((time) => { socket.emit('cue:seek', { time }); }, [socket]);
 
   // ── Setlist actions ────────────────────────────────────────────────────────
-  const loadSetlistItem = useCallback((id) => {
-    socket.emit('setlist:loadItem', { id });
+  const loadSetlistItem = useCallback((id, instant = false) => {
+    socket.emit('setlist:loadItem', { id, instant });
   }, [socket]);
 
-  const nextItem = useCallback(() => {
-    socket.emit('setlist:next');
+  const nextItem = useCallback((instant = false) => {
+    socket.emit('setlist:next', { instant });
   }, [socket]);
 
-  const prevItem = useCallback(() => {
-    socket.emit('setlist:prev');
+  const prevItem = useCallback((instant = false) => {
+    socket.emit('setlist:prev', { instant });
   }, [socket]);
+
+  const toggleAutoPlay = useCallback(() => {
+    setAutoPlay(prev => !prev);
+  }, []);
 
   const addSetlistItem = useCallback((itemData) => {
     socket.emit('setlist:add', itemData);
@@ -196,5 +235,15 @@ export function useStage() {
     setlist, activeSetlistItemId,
     loadSetlistItem, nextItem, prevItem,
     addSetlistItem, removeSetlistItem, reorderSetlist,
+    // Tranzicije
+    isTransitioning, transitionProgress,
+    // Auto-play
+    autoPlay, toggleAutoPlay, lastCueFinishedAt,
+    // Stage Manager
+    smStandbyId, smLastFiredId,
+    smGo:    useCallback(() => socket.emit('stageManager:go'),                  [socket]),
+    smStandby: useCallback((cueId) => socket.emit('stageManager:standby', { cueId }), [socket]),
+    smHold:  useCallback(() => socket.emit('stageManager:hold'),                [socket]),
+    smReset: useCallback(() => socket.emit('stageManager:reset'),               [socket]),
   };
 }

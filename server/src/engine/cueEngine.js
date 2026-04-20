@@ -2,6 +2,18 @@ const { EventEmitter } = require('events');
 
 const TICK_MS = 500; // resolucija timera
 
+// ── Cue action format ─────────────────────────────────────────────────────────
+// Svaka akcija u cue-u može biti instant ili animirana:
+//
+// Instant:
+//   { category: 'lights', elementId: 'light-1', changes: { on: true, intensity: 80 } }
+//
+// S tranzicijom (obrađuje transitionEngine u index.js):
+//   { category: 'lights', elementId: 'light-1', changes: { ... },
+//     transition: { duration: 2000, easing: 'easeInOut' } }
+//
+// Podržani easing: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
+
 class CueEngine extends EventEmitter {
   constructor(cueList) {
     super();

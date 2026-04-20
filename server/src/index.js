@@ -5,6 +5,7 @@ const { getInitialState } = require('./data/stageElements');
 const { getInitialPerformers } = require('./data/performers');
 const { CueList } = require('./data/cueList');
 const { CueEngine } = require('./engine/cueEngine');
+const { TransitionEngine } = require('./engine/transitionEngine');
 const { Setlist } = require('./data/setlist');
 const { registerHandlers } = require('./socket/handlers');
 const { server: mqttServer } = require('./mqtt/broker');
@@ -28,24 +29,72 @@ const performersRef = { list: getInitialPerformers() };
 const deviceManager = new DeviceManager();
 const cueList = new CueList();
 const cueEngine = new CueEngine(cueList);
+const transitionEngine = new TransitionEngine();
 const setlistRef = { instance: new Setlist(), activeItemId: null };
+// Stage Manager state — standby (sljedeći na redu) i zadnji okidani cue
+const smRef = { standbyId: null, lastFiredId: null };
 
 // Cue engine API shim — expose getCueList() so handlers can reach it
 cueEngine.getCueList = () => cueList;
 
-// Cue engine → Socket.IO wiring
+// ── TransitionEngine → Socket.IO wiring ───────────────────────────────────────
+
+transitionEngine.on('transition:start', ({ id, durationMs }) => {
+  io.emit('transition:start', { id, durationMs });
+});
+
+transitionEngine.on('transition:step', ({ id, updates, progress }) => {
+  for (const { elementId, category, state } of updates) {
+    const elements = stageState[category];
+    if (!elements) continue;
+    const index = elements.findIndex(el => el.id === elementId);
+    if (index !== -1) {
+      stageState[category][index] = { ...stageState[category][index], ...state };
+      io.emit('stage:elementUpdated', { category, element: stageState[category][index] });
+    }
+  }
+  io.emit('transition:progress', { id, progress });
+});
+
+transitionEngine.on('transition:complete', ({ id, updates }) => {
+  // Sync final values to devices
+  for (const { elementId, state } of updates) {
+    deviceManager.sendCommand(elementId, state);
+  }
+  io.emit('transition:complete', { id });
+});
+
+// ── Cue engine → Socket.IO wiring ────────────────────────────────────────────
+
 cueEngine.on('cue:executed', ({ cue, actions }) => {
   io.emit('cue:executed', { cueId: cue.id });
 
-  // Apply each action to stageState and broadcast
   for (const action of actions) {
     const elements = stageState[action.category];
     if (!elements) continue;
     const index = elements.findIndex(el => el.id === action.elementId);
     if (index === -1) continue;
-    elements[index] = { ...elements[index], ...action.changes };
-    io.emit('stage:elementUpdated', { category: action.category, element: elements[index] });
-    deviceManager.sendCommand(action.elementId, action.changes);
+
+    // If action carries a transition field, delegate to transitionEngine
+    if (action.transition && action.transition.duration > 0) {
+      const current = stageState[action.category][index];
+      const fromState = {
+        on: current.on,
+        intensity: current.intensity ?? 0,
+        color: current.color ?? '#000000',
+      };
+      transitionEngine.start(
+        `cue-${cue.id}-${action.elementId}`,
+        [{ elementId: action.elementId, category: action.category, fromState, toState: action.changes }],
+        action.transition.duration,
+        action.transition.easing || 'easeInOut',
+      );
+    } else {
+      // Instant apply
+      stageState[action.category][index] = { ...stageState[action.category][index], ...action.changes };
+      io.emit('stage:elementUpdated', { category: action.category, element: stageState[action.category][index] });
+      deviceManager.sendCommand(action.elementId, action.changes);
+    }
   }
 });
 
@@ -61,7 +110,8 @@ cueEngine.on('cue:finished', () => {
   io.emit('cue:finished');
 });
 
-// MQTT → Socket.IO wiring
+// ── MQTT → Socket.IO wiring ───────────────────────────────────────────────────
+
 deviceManager.on('heartbeat', ({ deviceId, timestamp }) => {
   io.emit('mqtt:heartbeat', { deviceId, timestamp });
 });
@@ -83,13 +133,13 @@ app.get('/', (req, res) => {
 
 io.on('connection', (socket) => {
   console.log(`Klijent spojen: ${socket.id}`);
-  registerHandlers(io, socket, stageState, deviceManager, performersRef, cueEngine, setlistRef);
-  socket.emit('setlist:updated', setlistRef.instance.getItems());
-  socket.emit('setlist:activeItem', setlistRef.activeItemId);
+  registerHandlers(io, socket, stageState, deviceManager, performersRef, cueEngine, setlistRef, transitionEngine, smRef);
   socket.emit('stage:stateReset', stageState);
   socket.emit('stage:performersReset', performersRef.list);
   socket.emit('cue:listUpdated', cueList.getCues());
   socket.emit('cue:transportChange', cueEngine.getState());
+  socket.emit('setlist:updated', setlistRef.instance.getItems());
+  socket.emit('setlist:activeItem', setlistRef.activeItemId);
 
   socket.on('disconnect', () => {
     console.log(`Klijent odvojen: ${socket.id}`);
