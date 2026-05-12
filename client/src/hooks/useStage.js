@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from './useSocket';
 
 export function useStage() {
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, isReconnecting } = useSocket();
 
   // Stage & MQTT
   const [stageState, setStageState] = useState(null);
@@ -221,7 +221,7 @@ export function useStage() {
 
   return {
     // Stage
-    stageState, isConnected, mqttHeartbeats,
+    stageState, isConnected, isReconnecting, mqttHeartbeats,
     updateElement, toggleElement, resetAll,
     // Performers
     performers, updatePerformerPosition,

@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react';
 
 function formatTime(totalSeconds) {
   const s = Math.floor(totalSeconds);
@@ -18,7 +17,6 @@ function formatCueTime(seconds) {
 
 export default function StageManagerPanel({
   cueList,
-  activeCueId,
   smStandbyId,
   smLastFiredId,
   onGo,
@@ -28,29 +26,10 @@ export default function StageManagerPanel({
   currentSetlistItem,
   isConnected,
   isTransitioning,
+  elapsed,
+  timerActive,
+  onResetStopwatch,
 }) {
-  // ── Štoperica ───────────────────────────────────────────────────────────────
-  const [elapsed, setElapsed]       = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const intervalRef = useRef(null);
-  const startRef    = useRef(null);
-
-  function startStopwatch() {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    startRef.current = Date.now() - elapsed * 1000;
-    setTimerActive(true);
-    intervalRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
-    }, 500);
-  }
-
-  function resetStopwatch() {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setElapsed(0);
-    setTimerActive(false);
-  }
-
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
   // ── Derived cue data ────────────────────────────────────────────────────────
   const sortedCues = [...cueList].sort((a, b) => a.timestamp - b.timestamp);
@@ -66,12 +45,6 @@ export default function StageManagerPanel({
 
   const goDisabled = !isConnected || cueList.length === 0;
   const hasMore = lastFiredIdx >= sortedCues.length - 1 && !standbyCue;
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-  function handleGo() {
-    startStopwatch();
-    onGo();
-  }
 
   return (
     <div className="sm-panel">
@@ -100,7 +73,7 @@ export default function StageManagerPanel({
         <span className={`sm-stopwatch ${timerActive ? 'running' : ''}`}>
           {formatTime(elapsed)}
         </span>
-        <button className="sm-stopwatch-reset" onClick={resetStopwatch} title="Reset štoperice">
+        <button className="sm-stopwatch-reset" onClick={onResetStopwatch} title="Reset štoperice">
           ↺
         </button>
       </div>
@@ -119,9 +92,9 @@ export default function StageManagerPanel({
 
       {/* ── GO gumb ──────────────────────────────────────────────────────────── */}
       <button
-        className={`sm-go-btn ${goDisabled || hasMore ? 'disabled' : ''} ${isTransitioning ? 'transitioning' : ''}`}
-        onClick={handleGo}
-        disabled={goDisabled || hasMore}
+        className={`sm-go-btn ${goDisabled || hasMore || isTransitioning ? 'disabled' : ''} ${isTransitioning ? 'transitioning' : ''}`}
+        onClick={onGo}
+        disabled={goDisabled || hasMore || isTransitioning}
       >
         GO
       </button>
@@ -138,7 +111,7 @@ export default function StageManagerPanel({
         </button>
         <button
           className="sm-reset-btn"
-          onClick={() => { onReset(); resetStopwatch(); }}
+          onClick={onReset}
           disabled={!isConnected}
           title="Vrati na početak liste"
         >

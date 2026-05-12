@@ -1,4 +1,5 @@
 const mqtt = require('mqtt');
+const { logger } = require('../utils/logger');
 
 class DeviceSimulator {
   constructor(element) {
@@ -19,7 +20,7 @@ class DeviceSimulator {
     this.client.on('connect', () => {
       this.client.subscribe(`stage/command/${this.id}`, (err) => {
         if (!err) {
-          console.log(`[Device ${this.id}] Subscribed: stage/command/${this.id}`);
+          logger.debug(`[Device ${this.id}] Subscribed: stage/command/${this.id}`);
         }
       });
       this._startHeartbeat();
@@ -31,18 +32,18 @@ class DeviceSimulator {
           const command = JSON.parse(message.toString());
           this._handleCommand(command);
         } catch (e) {
-          console.error(`[Device ${this.id}] Greška pri parsiranju komande:`, e.message);
+          logger.error(`[Device ${this.id}] Greška pri parsiranju komande:`, e.message);
         }
       }
     });
 
     this.client.on('error', (err) => {
-      console.error(`[Device ${this.id}] MQTT greška:`, err.message);
+      logger.error(`[Device ${this.id}] MQTT greška:`, err.message);
     });
   }
 
   _handleCommand(command) {
-    console.log(`[Device ${this.id}] Komanda primljena:`, command);
+    logger.debug(`[Device ${this.id}] Komanda primljena:`, command);
     this.state = { ...this.state, ...command };
     this._publishStatus();
   }
@@ -67,7 +68,7 @@ class DeviceSimulator {
     if (this.client && this.client.connected) {
       this.client.publish(`stage/command/${this.id}`, JSON.stringify(command));
     } else {
-      console.warn(`[Device ${this.id}] Nije spojen, komanda ignorirana`);
+      logger.warn(`[Device ${this.id}] Nije spojen, komanda ignorirana`);
     }
   }
 

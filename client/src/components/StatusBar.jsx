@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 
-export default function StatusBar({
+const StatusBar = memo(function StatusBar({
   isConnected,
   mqttHeartbeats,
   currentItemName,
@@ -66,4 +66,6 @@ export default function StatusBar({
       </div>
     </div>
   );
-}
+});
+
+export default StatusBar;

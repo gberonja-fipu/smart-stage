@@ -6,20 +6,21 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/test-flow.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "aedes": "^1.0.2",
-    "aedes-server-factory": "^0.2.1",
+    "aedes": "^0.47.0",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mqtt": "^5.15.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "socket.io-client": "^4.8.3"
   }
 }

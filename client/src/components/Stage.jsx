@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import StageElement from './StageElement';
 import StagePlot from './StagePlot';
 
@@ -26,13 +27,23 @@ function toSVG({ x, y }) {
 }
 
 export default function Stage({ stageState, selectedId, onSelectElement, performers, onMovePerformer, showPlot }) {
+  const svgRef = useRef(null);
+
   if (!stageState) return null;
 
   const allElements = Object.values(stageState).flat();
 
+  // Zone X positions (SVG)
+  const zL  = STAGE.x + STAGE.w * 0.25;  // 25 % — lijevo
+  const zC  = STAGE.x + STAGE.w * 0.50;  // 50 % — centar
+  const zR  = STAGE.x + STAGE.w * 0.75;  // 75 % — desno
+  const zY0 = STAGE.y;
+  const zY1 = STAGE.y + STAGE.h;
+
   return (
     <div className="stage-wrapper">
       <svg
+        ref={svgRef}
         viewBox="0 0 800 480"
         className="stage-svg"
         xmlns="http://www.w3.org/2000/svg"
@@ -53,14 +64,38 @@ export default function Stage({ stageState, selectedId, onSelectElement, perform
         <rect x={STAGE.x} y={STAGE.y} width={STAGE.w} height={STAGE.h}
           fill="none" stroke="#252850" strokeWidth="2" rx="4" />
 
-        {/* Direction labels */}
-        <text x={STAGE.x + 10} y={STAGE.y + 16}
-          fill="#252850" fontSize="10" fontFamily="monospace" letterSpacing="2">
-          STRAŽNJE
+        {/* ── Zone dividers ──────────────────────────────────────────────── */}
+        {[zL, zC, zR].map((xPos, i) => (
+          <line key={i}
+            x1={xPos} y1={zY0} x2={xPos} y2={zY1}
+            stroke="#1e2244" strokeWidth="1" strokeDasharray="4 6"
+          />
+        ))}
+
+        {/* Zone labels — top row */}
+        {[
+          { x: STAGE.x + STAGE.w * 0.125, label: 'LIJEVO' },
+          { x: STAGE.x + STAGE.w * 0.375, label: 'CENTAR-L' },
+          { x: STAGE.x + STAGE.w * 0.625, label: 'CENTAR-D' },
+          { x: STAGE.x + STAGE.w * 0.875, label: 'DESNO' },
+        ].map(({ x, label }) => (
+          <text key={label} x={x} y={STAGE.y + 14}
+            fill="#1e2244" fontSize="9" textAnchor="middle"
+            fontFamily="monospace" letterSpacing="1">
+            {label}
+          </text>
+        ))}
+
+        {/* Backstage label — top-left */}
+        <text x={STAGE.x + 8} y={STAGE.y + 26}
+          fill="#252850" fontSize="9" fontFamily="monospace" letterSpacing="2">
+          BACKSTAGE
         </text>
-        <text x={STAGE.x + 10} y={STAGE.y + STAGE.h - 8}
-          fill="#252850" fontSize="10" fontFamily="monospace" letterSpacing="2">
-          PREDNJA
+
+        {/* Front-of-stage label — bottom-left */}
+        <text x={STAGE.x + 8} y={STAGE.y + STAGE.h - 6}
+          fill="#252850" fontSize="9" fontFamily="monospace" letterSpacing="2">
+          PREDNJA SCENA
         </text>
 
         {/* Front-of-stage edge line */}
@@ -104,6 +139,7 @@ export default function Stage({ stageState, selectedId, onSelectElement, perform
           <StagePlot
             performers={performers}
             onMovePerformer={onMovePerformer}
+            svgRef={svgRef}
           />
         )}
       </svg>

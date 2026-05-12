@@ -37,8 +37,16 @@ function SelectionRing({ element }) {
   );
 }
 
+const TYPE_ICON = {
+  light:   '💡',
+  smoke:   '💨',
+  led:     '🌈',
+  speaker: '🔊',
+};
+
 function ElementLabel({ element }) {
   const shortName = element.name.split(' ').slice(-2).join(' ');
+  const icon = TYPE_ICON[element.type] ?? '';
   return (
     <text
       textAnchor="middle"
@@ -48,7 +56,7 @@ function ElementLabel({ element }) {
       fontFamily="monospace"
       style={{ userSelect: 'none', pointerEvents: 'none' }}
     >
-      {shortName}
+      {icon} {shortName}
     </text>
   );
 }

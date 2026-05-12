@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,19 +12,23 @@ const { Setlist } = require('./data/setlist');
 const { registerHandlers } = require('./socket/handlers');
 const { server: mqttServer } = require('./mqtt/broker');
 const { DeviceManager } = require('./mqtt/deviceManager');
+const { logger } = require('./utils/logger');
+const { getPresets, importPresets } = require('./data/presets');
 
 const app = express();
+app.use(express.json({ limit: '10mb' }));
 const server = http.createServer(app);
+
+const PORT      = process.env.PORT      || 3001;
+const MQTT_PORT = process.env.MQTT_PORT || 1883;
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173',
+    origin: CLIENT_URL,
     methods: ['GET', 'POST'],
   },
 });
-
-const PORT = 3001;
-const MQTT_PORT = 1883;
 
 let stageState = getInitialState();
 const performersRef = { list: getInitialPerformers() };
@@ -31,7 +37,6 @@ const cueList = new CueList();
 const cueEngine = new CueEngine(cueList);
 const transitionEngine = new TransitionEngine();
 const setlistRef = { instance: new Setlist(), activeItemId: null };
-// Stage Manager state — standby (sljedeći na redu) i zadnji okidani cue
 const smRef = { standbyId: null, lastFiredId: null };
 
 // Cue engine API shim — expose getCueList() so handlers can reach it
@@ -57,7 +62,6 @@ transitionEngine.on('transition:step', ({ id, updates, progress }) => {
 });
 
 transitionEngine.on('transition:complete', ({ id, updates }) => {
-  // Sync final values to devices
   for (const { elementId, state } of updates) {
     deviceManager.sendCommand(elementId, state);
   }
@@ -75,7 +79,6 @@ cueEngine.on('cue:executed', ({ cue, actions }) => {
     const index = elements.findIndex(el => el.id === action.elementId);
     if (index === -1) continue;
 
-    // If action carries a transition field, delegate to transitionEngine
     if (action.transition && action.transition.duration > 0) {
       const current = stageState[action.category][index];
       const fromState = {
@@ -90,7 +93,6 @@ cueEngine.on('cue:executed', ({ cue, actions }) => {
         action.transition.easing || 'easeInOut',
       );
     } else {
-      // Instant apply
       stageState[action.category][index] = { ...stageState[action.category][index], ...action.changes };
       io.emit('stage:elementUpdated', { category: action.category, element: stageState[action.category][index] });
       deviceManager.sendCommand(action.elementId, action.changes);
@@ -128,11 +130,46 @@ deviceManager.on('statusUpdate', ({ deviceId, status }) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ message: 'Pametna pozornica - server radi!' });
+  res.json({ message: 'Pametna pozornica — server radi!', port: PORT });
+});
+
+// ── REST API: export / import ─────────────────────────────────────────────────
+
+app.get('/api/export', (req, res) => {
+  res.json({
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    presets: getPresets(),
+    cues: cueList.getCues(),
+    setlist: setlistRef.instance.getItems(),
+  });
+  logger.info('[API] Export podataka');
+});
+
+app.post('/api/import', (req, res) => {
+  const { presets: newPresets, cues: newCues, setlist: newSetlist } = req.body || {};
+
+  if (newPresets && Array.isArray(newPresets)) {
+    importPresets(newPresets);
+    io.emit('stage:presetsLoaded', getPresets());
+  }
+  if (newCues && Array.isArray(newCues)) {
+    cueList.importCues(newCues);
+    io.emit('cue:listUpdated', cueList.getCues());
+  }
+  if (newSetlist && Array.isArray(newSetlist)) {
+    setlistRef.instance.importItems(newSetlist);
+    setlistRef.activeItemId = null;
+    io.emit('setlist:updated', setlistRef.instance.getItems());
+    io.emit('setlist:activeItem', null);
+  }
+
+  logger.info('[API] Import podataka završen');
+  res.json({ success: true });
 });
 
 io.on('connection', (socket) => {
-  console.log(`Klijent spojen: ${socket.id}`);
+  logger.info(`Klijent spojen: ${socket.id}`);
   registerHandlers(io, socket, stageState, deviceManager, performersRef, cueEngine, setlistRef, transitionEngine, smRef);
   socket.emit('stage:stateReset', stageState);
   socket.emit('stage:performersReset', performersRef.list);
@@ -142,16 +179,27 @@ io.on('connection', (socket) => {
   socket.emit('setlist:activeItem', setlistRef.activeItemId);
 
   socket.on('disconnect', () => {
-    console.log(`Klijent odvojen: ${socket.id}`);
+    logger.info(`Klijent odvojen: ${socket.id}`);
   });
 });
 
-// Pokreni MQTT broker, zatim inicijaliziraj uređaje i HTTP server
 mqttServer.listen(MQTT_PORT, () => {
-  console.log(`MQTT broker pokrenut na portu ${MQTT_PORT}`);
+  logger.info(`MQTT broker pokrenut na portu ${MQTT_PORT}`);
   deviceManager.initialize();
 });
 
 server.listen(PORT, () => {
-  console.log(`Server pokrenut na http://localhost:${PORT}`);
+  logger.info(`Server pokrenut na http://localhost:${PORT}`);
 });
+
+function shutdown() {
+  logger.info('Gašenje servera...');
+  cueEngine.stop();
+  transitionEngine.cancelAll();
+  server.close(() => {
+    mqttServer.close(() => process.exit(0));
+  });
+}
+
+process.on('SIGINT',  shutdown);
+process.on('SIGTERM', shutdown);

@@ -2,6 +2,7 @@ const EventEmitter = require('events');
 const mqtt = require('mqtt');
 const { getInitialState } = require('../data/stageElements');
 const { DeviceSimulator } = require('./deviceSimulator');
+const { logger } = require('../utils/logger');
 
 class DeviceManager extends EventEmitter {
   constructor() {
@@ -28,7 +29,7 @@ class DeviceManager extends EventEmitter {
     this._managerClient.on('connect', () => {
       this._managerClient.subscribe('stage/status/#');
       this._managerClient.subscribe('stage/heartbeat/#');
-      console.log('[DeviceManager] Spojen na MQTT broker');
+      logger.info('[DeviceManager] Spojen na MQTT broker');
     });
 
     this._managerClient.on('message', (topic, message) => {
@@ -43,12 +44,12 @@ class DeviceManager extends EventEmitter {
           this.emit('heartbeat', { deviceId, timestamp: payload.timestamp });
         }
       } catch (e) {
-        console.error('[DeviceManager] Greška pri parsiranju poruke:', e.message);
+        logger.error('[DeviceManager] Greška pri parsiranju poruke:', e.message);
       }
     });
 
     this._managerClient.on('error', (err) => {
-      console.error('[DeviceManager] MQTT greška:', err.message);
+      logger.error('[DeviceManager] MQTT greška:', err.message);
     });
   }
 
@@ -57,7 +58,7 @@ class DeviceManager extends EventEmitter {
     if (device) {
       device.sendCommand(command);
     } else {
-      console.warn(`[DeviceManager] Uređaj ${deviceId} nije pronađen`);
+      logger.warn(`[DeviceManager] Uređaj ${deviceId} nije pronađen`);
     }
   }
 

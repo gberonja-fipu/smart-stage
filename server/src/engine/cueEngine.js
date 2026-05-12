@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events');
+const { logger } = require('../utils/logger');
 
 const TICK_MS = 500; // resolucija timera
 
@@ -30,6 +31,7 @@ class CueEngine extends EventEmitter {
 
   play() {
     if (this._isPlaying) return;
+    if (this._cueList.getCues().length === 0) return;
     this._isPlaying = true;
     this._startWallTime = Date.now();
     this._startOffset = this._currentTime;
@@ -43,7 +45,6 @@ class CueEngine extends EventEmitter {
     this._isPlaying = false;
     clearInterval(this._interval);
     this._interval = null;
-    // Sync time precisely before pausing
     this._currentTime = this._elapsed();
     this.emit('cue:transportChange', { isPlaying: false, currentTime: this._currentTime });
   }
@@ -66,7 +67,6 @@ class CueEngine extends EventEmitter {
     }
 
     this._currentTime = Math.max(0, time);
-    // Clear executed set so cues after seek point can fire again
     this._executedIds = new Set(
       this._cueList.getCues()
         .filter(c => c.timestamp < this._currentTime)
@@ -101,28 +101,23 @@ class CueEngine extends EventEmitter {
     this._currentTime = this._elapsed();
 
     const cues = this._cueList.getCues();
-    let anyExecuted = false;
 
     for (const cue of cues) {
       if (!this._executedIds.has(cue.id) && cue.timestamp <= this._currentTime) {
         this._executedIds.add(cue.id);
         const actions = this._cueList.executeCue(cue);
         this.emit('cue:executed', { cue, actions });
-        anyExecuted = true;
-        console.log(`[CUE] "${cue.name}" @ ${cue.timestamp}s`);
+        logger.info(`[CUE] "${cue.name}" @ ${cue.timestamp}s`);
       }
     }
 
     this.emit('cue:timeUpdate', { currentTime: this._currentTime });
 
-    // Stop at the end of the last cue + 1s buffer
     const lastTimestamp = cues.length > 0 ? cues[cues.length - 1].timestamp : 0;
     if (this._currentTime >= lastTimestamp + 1 && cues.length > 0) {
       this.stop();
       this.emit('cue:finished');
     }
-
-    void anyExecuted; // suppress unused warning
   }
 }
 

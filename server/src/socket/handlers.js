@@ -1,5 +1,6 @@
 const { getInitialState } = require('../data/stageElements');
 const { getPresets, getPresetById, savePreset } = require('../data/presets');
+const { logger } = require('../utils/logger');
 
 // Default crossfade duration (ms) for setlist transitions
 const CROSSFADE_DURATION_MS = 2000;
@@ -24,7 +25,7 @@ function applyPreset(io, state, deviceManager, performersRef, preset) {
 
   io.emit('stage:performersReset', performersRef.list);
   io.emit('stage:presetLoaded', preset.id);
-  console.log(`[PRESET] "${preset.name}" učitan`);
+  logger.info(`[PRESET] "${preset.name}" učitan`);
 }
 
 // Snap performer positions without touching lights (used during crossfade)
@@ -50,7 +51,7 @@ function startCrossfade(io, state, performersRef, transitionEngine, preset, dura
     durationMs,
     'easeInOut',
   );
-  console.log(`[TRANSITION] Crossfade → "${preset.name}" (${durationMs}ms)`);
+  logger.info(`[TRANSITION] Crossfade → "${preset.name}" (${durationMs}ms)`);
 }
 
 // ── registerHandlers ──────────────────────────────────────────────────────────
@@ -85,12 +86,12 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   // ── Stage state ────────────────────────────────────────────────────────────
 
   socket.on('stage:getState', () => {
-    console.log(`[${socket.id}] stage:getState`);
+    logger.info(`[${socket.id}] stage:getState`);
     socket.emit('stage:stateReset', state);
   });
 
   socket.on('stage:updateElement', ({ category, id, changes }) => {
-    console.log(`[${socket.id}] stage:updateElement — ${category}/${id}`, changes);
+    logger.info(`[${socket.id}] stage:updateElement — ${category}/${id}`, changes);
 
     const elements = state[category];
     if (!elements) return;
@@ -104,7 +105,7 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   });
 
   socket.on('stage:toggleElement', ({ category, id }) => {
-    console.log(`[${socket.id}] stage:toggleElement — ${category}/${id}`);
+    logger.info(`[${socket.id}] stage:toggleElement — ${category}/${id}`);
 
     const elements = state[category];
     if (!elements) return;
@@ -118,7 +119,7 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   });
 
   socket.on('stage:resetAll', () => {
-    console.log(`[${socket.id}] stage:resetAll`);
+    logger.info(`[${socket.id}] stage:resetAll`);
     transitionEngine.cancelAll();
 
     const fresh = getInitialState();
@@ -132,12 +133,12 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   // ── Performers ────────────────────────────────────────────────────────────
 
   socket.on('stage:getPerformers', () => {
-    console.log(`[${socket.id}] stage:getPerformers`);
+    logger.info(`[${socket.id}] stage:getPerformers`);
     socket.emit('stage:performersReset', performersRef.list);
   });
 
   socket.on('stage:updatePerformerPosition', ({ id, position }) => {
-    console.log(`[${socket.id}] stage:updatePerformerPosition — ${id}`, position);
+    logger.info(`[${socket.id}] stage:updatePerformerPosition — ${id}`, position);
 
     const index = performersRef.list.findIndex(p => p.id === id);
     if (index === -1) return;
@@ -149,19 +150,19 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   // ── Presets ───────────────────────────────────────────────────────────────
 
   socket.on('stage:getPresets', () => {
-    console.log(`[${socket.id}] stage:getPresets`);
+    logger.info(`[${socket.id}] stage:getPresets`);
     socket.emit('stage:presetsLoaded', getPresets());
   });
 
   socket.on('stage:loadPreset', ({ presetId }) => {
-    console.log(`[${socket.id}] stage:loadPreset — ${presetId}`);
+    logger.info(`[${socket.id}] stage:loadPreset — ${presetId}`);
     const preset = getPresetById(presetId);
     if (!preset) return;
     applyPreset(io, state, deviceManager, performersRef, preset);
   });
 
   socket.on('stage:savePreset', ({ name, description }) => {
-    console.log(`[${socket.id}] stage:savePreset — "${name}"`);
+    logger.info(`[${socket.id}] stage:savePreset — "${name}"`);
 
     const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
@@ -175,32 +176,32 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
     savePreset(newPreset);
 
     io.emit('stage:presetsLoaded', getPresets());
-    console.log(`[PRESET] "${name}" spremljen`);
+    logger.info(`[PRESET] "${name}" spremljen`);
   });
 
   // ── Cue list ───────────────────────────────────────────────────────────────
 
   socket.on('cue:getList', () => {
-    console.log(`[${socket.id}] cue:getList`);
+    logger.info(`[${socket.id}] cue:getList`);
     socket.emit('cue:listUpdated', cueEngine.getCueList().getCues());
     socket.emit('cue:transportChange', cueEngine.getState());
   });
 
   socket.on('cue:add', (cueData) => {
-    console.log(`[${socket.id}] cue:add — "${cueData.name}"`);
+    logger.info(`[${socket.id}] cue:add — "${cueData.name}"`);
     const newCue = cueEngine.getCueList().addCue(cueData);
     io.emit('cue:listUpdated', cueEngine.getCueList().getCues());
     void newCue;
   });
 
   socket.on('cue:remove', ({ id }) => {
-    console.log(`[${socket.id}] cue:remove — ${id}`);
+    logger.info(`[${socket.id}] cue:remove — ${id}`);
     cueEngine.getCueList().removeCue(id);
     io.emit('cue:listUpdated', cueEngine.getCueList().getCues());
   });
 
   socket.on('cue:update', ({ id, changes }) => {
-    console.log(`[${socket.id}] cue:update — ${id}`);
+    logger.info(`[${socket.id}] cue:update — ${id}`);
     const updated = cueEngine.getCueList().updateCue(id, changes);
     if (updated) io.emit('cue:listUpdated', cueEngine.getCueList().getCues());
   });
@@ -213,20 +214,20 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   // ── Setlist ────────────────────────────────────────────────────────────────
 
   socket.on('setlist:get', () => {
-    console.log(`[${socket.id}] setlist:get`);
+    logger.info(`[${socket.id}] setlist:get`);
     socket.emit('setlist:updated', setlistRef.instance.getItems());
     socket.emit('setlist:activeItem', setlistRef.activeItemId);
   });
 
   socket.on('setlist:add', (itemData) => {
-    console.log(`[${socket.id}] setlist:add — "${itemData.name}"`);
+    logger.info(`[${socket.id}] setlist:add — "${itemData.name}"`);
     const newItem = setlistRef.instance.addItem(itemData);
     io.emit('setlist:updated', setlistRef.instance.getItems());
     void newItem;
   });
 
   socket.on('setlist:remove', ({ id }) => {
-    console.log(`[${socket.id}] setlist:remove — ${id}`);
+    logger.info(`[${socket.id}] setlist:remove — ${id}`);
     if (setlistRef.activeItemId === id) setlistRef.activeItemId = null;
     setlistRef.instance.removeItem(id);
     io.emit('setlist:updated', setlistRef.instance.getItems());
@@ -234,14 +235,14 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   });
 
   socket.on('setlist:reorder', ({ orderedIds }) => {
-    console.log(`[${socket.id}] setlist:reorder`);
+    logger.info(`[${socket.id}] setlist:reorder`);
     setlistRef.instance.reorderItems(orderedIds);
     io.emit('setlist:updated', setlistRef.instance.getItems());
   });
 
   // instant: true → odmah primijeni preset bez fade efekta
   socket.on('setlist:loadItem', ({ id, instant = false }) => {
-    console.log(`[${socket.id}] setlist:loadItem — ${id} (instant=${instant})`);
+    logger.info(`[${socket.id}] setlist:loadItem — ${id} (instant=${instant})`);
     const item = setlistRef.instance.getItemById(id);
     if (!item) return;
 
@@ -254,15 +255,15 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
 
     if (instant) {
       applyPreset(io, state, deviceManager, performersRef, preset);
-      console.log(`[SETLIST] Instant load "${preset.name}" za "${item.name}"`);
+      logger.info(`[SETLIST] Instant load "${preset.name}" za "${item.name}"`);
     } else {
       startCrossfade(io, state, performersRef, transitionEngine, preset, CROSSFADE_DURATION_MS);
-      console.log(`[SETLIST] Crossfade "${preset.name}" za "${item.name}"`);
+      logger.info(`[SETLIST] Crossfade "${preset.name}" za "${item.name}"`);
     }
   });
 
   socket.on('setlist:next', ({ instant = false } = {}) => {
-    console.log(`[${socket.id}] setlist:next (instant=${instant})`);
+    logger.info(`[${socket.id}] setlist:next (instant=${instant})`);
     const items = setlistRef.instance.getItems();
     if (items.length === 0) return;
 
@@ -288,7 +289,7 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   });
 
   socket.on('setlist:prev', ({ instant = false } = {}) => {
-    console.log(`[${socket.id}] setlist:prev (instant=${instant})`);
+    logger.info(`[${socket.id}] setlist:prev (instant=${instant})`);
     const items = setlistRef.instance.getItems();
     if (items.length === 0) return;
 
@@ -316,13 +317,13 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
   // ── Stage Manager ─────────────────────────────────────────────────────────
 
   socket.on('stageManager:getState', () => {
-    console.log(`[${socket.id}] stageManager:getState`);
+    logger.info(`[${socket.id}] stageManager:getState`);
     socket.emit('stageManager:state', { standbyId: smRef.standbyId, lastFiredId: smRef.lastFiredId });
   });
 
   // GO — okida standby cue (ili prvi/sljedeći ako standby nije postavljen)
   socket.on('stageManager:go', () => {
-    console.log(`[${socket.id}] stageManager:go`);
+    logger.info(`[${socket.id}] stageManager:go`);
     const cues = cueEngine.getCueList().getCues(); // sorted by timestamp
     if (cues.length === 0) return;
 
@@ -336,14 +337,14 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
       targetCue = lastIdx + 1 < cues.length ? cues[lastIdx + 1] : null;
     }
     if (!targetCue) {
-      console.log('[SM] Nema više cueova za okidanje');
+      logger.info('[SM] Nema više cueova za okidanje');
       return;
     }
 
     // Primijeni akcije
     applyCueActions(io, state, deviceManager, transitionEngine, targetCue);
     io.emit('cue:executed', { cueId: targetCue.id });
-    console.log(`[SM] GO — "${targetCue.name}"`);
+    logger.info(`[SM] GO — "${targetCue.name}"`);
 
     // Pomakni pokazivač
     smRef.lastFiredId = targetCue.id;
@@ -355,21 +356,21 @@ function registerHandlers(io, socket, state, deviceManager, performersRef, cueEn
 
   // STANDBY — ručno postavi koji cue je sljedeći na redu
   socket.on('stageManager:standby', ({ cueId }) => {
-    console.log(`[${socket.id}] stageManager:standby — ${cueId}`);
+    logger.info(`[${socket.id}] stageManager:standby — ${cueId}`);
     smRef.standbyId = cueId || null;
     io.emit('stageManager:state', { standbyId: smRef.standbyId, lastFiredId: smRef.lastFiredId });
   });
 
   // HOLD — pauzira cue engine (timeline playback)
   socket.on('stageManager:hold', () => {
-    console.log(`[${socket.id}] stageManager:hold`);
+    logger.info(`[${socket.id}] stageManager:hold`);
     cueEngine.pause();
     io.emit('stageManager:held');
   });
 
   // RESET SM — vraća pokazivač na početak
   socket.on('stageManager:reset', () => {
-    console.log(`[${socket.id}] stageManager:reset`);
+    logger.info(`[${socket.id}] stageManager:reset`);
     smRef.standbyId = null;
     smRef.lastFiredId = null;
     const cues = cueEngine.getCueList().getCues();

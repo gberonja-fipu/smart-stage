@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 
 // SVG stage area — mora biti isti kao u Stage.jsx
 const STAGE = { x: 40, y: 30, w: 720, h: 390 };
@@ -15,7 +15,6 @@ const GROUP_LABELS = {
   vocalist:  'Solisti',
 };
 
-// Iste koordinatne transformacije kao u Stage.jsx
 function toSVG({ x, y }) {
   return {
     x: STAGE.x + (x / 100) * STAGE.w,
@@ -40,18 +39,28 @@ function initials(name) {
     .toUpperCase();
 }
 
-export default function StagePlot({ performers, onMovePerformer }) {
-  const svgRef = useRef(null);
-  const dragging = useRef(null); // { id, startX, startY }
+export default function StagePlot({ performers, onMovePerformer, svgRef }) {
+  const dragging = useRef(null);
+  // Store active drag handler refs so we can clean up on unmount
+  const activeMoveRef = useRef(null);
+  const activeUpRef   = useRef(null);
+
+  // Clean up window listeners if component unmounts mid-drag
+  useEffect(() => {
+    return () => {
+      if (activeMoveRef.current) window.removeEventListener('mousemove', activeMoveRef.current);
+      if (activeUpRef.current)   window.removeEventListener('mouseup',   activeUpRef.current);
+    };
+  }, []);
 
   const getSVGPoint = useCallback((e) => {
-    const svg = svgRef.current;
+    const svg = svgRef?.current;
     if (!svg) return null;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
     return pt.matrixTransform(svg.getScreenCTM().inverse());
-  }, []);
+  }, [svgRef]);
 
   const onMouseDown = useCallback((e, performer) => {
     e.stopPropagation();
@@ -71,8 +80,12 @@ export default function StagePlot({ performers, onMovePerformer }) {
       dragging.current = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      activeMoveRef.current = null;
+      activeUpRef.current   = null;
     };
 
+    activeMoveRef.current = onMove;
+    activeUpRef.current   = onUp;
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [getSVGPoint, onMovePerformer]);
@@ -85,7 +98,6 @@ export default function StagePlot({ performers, onMovePerformer }) {
         const { x, y } = toSVG(performer.position);
         const color = GROUP_COLORS[performer.group] || '#888';
         const label = initials(performer.name);
-        const isDragging = dragging.current?.id === performer.id;
 
         return (
           <g
@@ -95,17 +107,13 @@ export default function StagePlot({ performers, onMovePerformer }) {
             style={{ cursor: 'grab' }}
           >
             <title>{performer.name} — {performer.role}</title>
-            {/* Shadow */}
             <circle r={13} fill="rgba(0,0,0,0.4)" cy={2} />
-            {/* Body */}
             <circle
               r={12}
               fill={color}
-              opacity={isDragging ? 0.7 : 1}
               stroke="rgba(255,255,255,0.3)"
               strokeWidth="1"
             />
-            {/* Initials */}
             <text
               textAnchor="middle"
               dominantBaseline="central"
@@ -121,7 +129,6 @@ export default function StagePlot({ performers, onMovePerformer }) {
         );
       })}
 
-      {/* Legend */}
       <StagePlotLegend />
     </g>
   );
